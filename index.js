@@ -51,7 +51,7 @@ app.get("/api/bn/image", async (req, res) => {
     console.log(error);
   }
 });
-app.post("/api/bn/addbooks", async (req, res) => {
+app.post("/api/bn/allbooks", async (req, res) => {
   try {
     const data = req.body;
     const result = await booksCollections.insertOne(data);
@@ -60,15 +60,21 @@ app.post("/api/bn/addbooks", async (req, res) => {
     console.log(error);
   }
 });
-
-app.get("/api/bn/addbooks", async (req, res) => {
+app.get("/api/bn/allbooks", async (req, res) => {
   try {
-    const result = await booksCollections.find().toArray();
+    let queryObj = {};
+    const category = req.query.category;
+    if (category) {
+      queryObj.category = category;
+    }
+    const result = await booksCollections.find(queryObj).toArray();
     res.send(result);
   } catch (error) {
     console.log(error);
+    res.status(500).send("Internal Server Error");
   }
 });
+
 app.get("/api/bn/category", async (req, res) => {
   try {
     const result = await categoryCollection.find().toArray();
