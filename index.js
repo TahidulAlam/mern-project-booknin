@@ -80,21 +80,26 @@ async function run() {
       );
       res.header("Access-Control-Allow-Credentials", true);
 
-      res
-        .cookie("token", token, {
-          httpOnly: true,
-          secure: true,
-          expires: expireDate,
-          sameSite: "Lax",
-        })
-        .send({ success: true });
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production" ? true : false,
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      });
+      res.send({ success: true });
     });
     // For Vercel
     app.post("/signInOut", async (req, res) => {
-      const user = req.body;
-      res
-        .clearCookie("token", { maxAge: 0, sameSite: "Lax", secure: true })
-        .send({ success: true });
+      res.clearCookie("token", {
+        maxAge: 0,
+        secure: process.env.NODE_ENV === "production" ? true : false,
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      });
+      res.header(
+        "Access-Control-Allow-Origin",
+        "https://booknin-project.web.app"
+      );
+      res.header("Access-Control-Allow-Credentials", true);
+      res.send({ success: true });
     });
 
     app.get("/api/bn/image", async (req, res) => {
@@ -208,9 +213,6 @@ async function run() {
     });
     app.get("/api/bn/borrowedBooks", verify, async (req, res) => {
       try {
-        // if (req.query.email !== req.user.email) {
-        //   return res.status(403).send({ message: "UnAutherised" });
-        // }
         let query = {};
         if (req.query?.email) {
           query = { email: req.query.email };
