@@ -6,15 +6,16 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 5000;
-const corsOptions = {
-  origin: [
-    "https://booknin-project.web.app",
-    "https://booknin-project.firebaseapp.com",
-  ],
-  credentials: true,
-};
+app.use(
+  cors({
+    credentials: true,
+    origin: [
+      "https://booknin-project.web.app",
+      "https://booknin-project.firebaseapp.com",
+    ],
+  })
+);
 
-app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -32,11 +33,13 @@ async function run() {
   try {
     const verify = (req, res, next) => {
       const token = req?.cookies?.token;
+
       if (!token) {
         return res
           .status(401)
           .send({ status: "Unauthorized Access", code: "401" });
       }
+
       jwt.verify(token, process.env.JWT_SECRET_KEY, (error, decoded) => {
         if (error) {
           console.error("JWT Verification Error:", error);
@@ -46,6 +49,7 @@ async function run() {
             error: "Invalid token",
           });
         } else {
+          console.log("Decoded Token:", decoded);
           req.user = decoded;
           next();
         }
@@ -60,27 +64,39 @@ async function run() {
 
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      const token = jwt.sign(user, process.env.JWT_SECRET_KEY, {
-        expiresIn: "10h",
-      });
+      const token = jwt.sign(
+        { email: user.email },
+        process.env.JWT_SECRET_KEY,
+        {
+          expiresIn: "10h",
+        }
+      );
       const expireDate = new Date();
       expireDate.setDate(expireDate.getDate() + 7);
+
+      res.header(
+        "Access-Control-Allow-Origin",
+        "https://booknin-project.web.app"
+      );
+      res.header("Access-Control-Allow-Credentials", true);
+
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: false,
+          secure: true,
           expires: expireDate,
-          sameSite: "none",
+          sameSite: "Lax",
         })
         .send({ success: true });
     });
+    // For Vercel
     app.post("/signInOut", async (req, res) => {
       const user = req.body;
-      console.log("logging out", user);
       res
-        .clearCookie("token", { maxAge: 0, sameSite: "none", secure: true })
+        .clearCookie("token", { maxAge: 0, sameSite: "Lax", secure: true })
         .send({ success: true });
     });
+
     app.get("/api/bn/image", async (req, res) => {
       try {
         const result = await ImageCollection.find().toArray();
@@ -155,7 +171,7 @@ async function run() {
         res.status(500).json({ message: "Internal server error" });
       }
     });
-    app.post("/api/bn/borrowedBooks", async (req, res) => {
+    app.post("/api/bn/borrowedBooks", verify, async (req, res) => {
       try {
         const data = req.body;
         const bookName = data.book_name;
@@ -169,22 +185,20 @@ async function run() {
           return res.status(400).json({ error: "Book is out of stock" });
         }
         const existingBorrowedBook = await borrowedCollection.findOne({
-          user_id: data.user_id,
-          book_id: book._id,
+          email: data.email,
+          book_name: data.book_name,
         });
-
         if (existingBorrowedBook) {
-          return res
-            .status(400)
-            .json({ error: "User has already borrowed this book" });
-        }
-        await booksCollections.updateOne(
-          { _id: book._id },
-          { $inc: { quantity: -1 } }
-        );
-        const result = await borrowedCollection.insertOne(data);
+          return res.status(400).json({ alreadyBorrowed: true });
+        } else {
+          await booksCollections.updateOne(
+            { _id: book._id },
+            { $inc: { quantity: -1 } }
+          );
+          const result = await borrowedCollection.insertOne(data);
 
-        res.json(result);
+          res.json(result);
+        }
       } catch (error) {
         console.error(error);
         res
@@ -192,12 +206,11 @@ async function run() {
           .json({ error: "An error occurred while borrowing the book" });
       }
     });
-
-    app.get("/api/bn/borrowedBooks", async (req, res) => {
+    app.get("/api/bn/borrowedBooks", verify, async (req, res) => {
       try {
-        if (req.query.email !== req.user.email) {
-          return res.status(403).send({ message: "UnAutherised" });
-        }
+        // if (req.query.email !== req.user.email) {
+        //   return res.status(403).send({ message: "UnAutherised" });
+        // }
         let query = {};
         if (req.query?.email) {
           query = { email: req.query.email };
@@ -238,7 +251,6 @@ async function run() {
         res.status(500).send({ error: "Internal server error" });
       }
     });
-
     app.get("/api/bn/category", async (req, res) => {
       try {
         const result = await categoryCollection.find().toArray();
